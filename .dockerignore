@@ -1,0 +1,8 @@
+# Only what the Dockerfile COPYs needs to reach the daemon.
+.git/
+.gitignore
+__pycache__/
+*.pyc
+logs/
+tools/
+*.md
