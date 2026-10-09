@@ -16,7 +16,7 @@ docker compose build          # on the Jetson, a few minutes (image: cameras-pub
 ## Deploy
 ```bash
 docker compose up -d          # start (also after every reboot: restart: unless-stopped)
-docker compose logs -f        # log; also ./logs/publish_cameras.log
+docker compose logs -f        # live log (see Logs below)
 docker compose down           # stop
 ```
 ## Cameras
@@ -56,6 +56,14 @@ Publishes only; subscribes to nothing. QoS: reliable, volatile, depth 10.
 - **Belly lens calibration**: set `OD_BELLY_CAMERA_FX/FY/CX/CY` and `OD_BELLY_CAMERA_DISTORTION_COEFFS` once per camera (checkerboard at 640x400). Uncalibrated, the visual odometry has a scale error of about 8 %.
 - Measure and set the mounts: `OD_BELLY_CAMERA_MOUNT_*_DEG`, `OD_BELLY_CAMERA_T*_M` (offset from the IMU) and `OD_STEREO_CAMERA_BASELINE_CMS` (6 cm).
 - Fixed belly exposure (less motion blur): `OD_BELLY_CAMERA_EXPOSURE: "30"` (100 µs units; default auto).
+
+## Logs
+Written in the container to **`/workspace/logs/publish_cameras.log`** (DEBUG: devices found, every open/re-open, intrinsics, stalls, errors, fps per stream every 5 s; rotates at 5 MB, keeps `.1`-`.3`). `docker-compose.yml` mounts the folder as `logs/` next to it on the Jetson:
+```bash
+tail -f /opt/swarmer/cameras_publisher/logs/publish_cameras.log
+docker exec cameras-publisher tail -f /workspace/logs/publish_cameras.log      # the same, from inside
+```
+`docker compose logs -f` shows the INFO part of the same log.
 
 ## Check
 ```bash

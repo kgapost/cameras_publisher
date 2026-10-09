@@ -74,7 +74,7 @@ python3 publish_cameras.py --no-stereo --belly /dev/video0
 - At start-up it looks for each camera (belly first, then left and right) and publishes only what it finds. Nothing found: it exits with code 1, so a `--restart` policy retries.
 - A camera that sends no frame for 5 s is re-opened (with growing back-off). A watchdog logs `STALLED` / `Recovered` per stream.
 - Errors are logged and survived. `docker stop` shuts down cleanly.
-- Log: terminal (INFO) and `logs/publish_cameras.log` (DEBUG, rotating 5 MB x 3): devices found, every open/re-open, intrinsics, stalls, errors, and per-stream fps every 5 s.
+- Log: terminal (INFO) and `logs/publish_cameras.log` (DEBUG, rotating 5 MB x 3): devices found, every open/re-open, intrinsics, stalls, errors, and per-stream fps every 5 s. In the container it is `/workspace/logs/publish_cameras.log`, mounted as `logs/` in the repo folder: `tail -f logs/publish_cameras.log`.
 
 ## Configuration
 
