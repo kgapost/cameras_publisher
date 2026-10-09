@@ -1,0 +1,9 @@
+# Python (PyPI) packages of the cameras publisher - the ONLY list, installed by
+# setup/install_requirements.sh (see its header for the [tags]):
+#   Dev PC venv : setup/install_requirements.sh --venv cameras_env
+#   Docker image: setup/install_requirements.sh --docker   (called by the Dockerfile)
+# ROS 2 packages (rclpy, sensor_msgs, tf2_ros, ...) come from ROS 2 Jazzy, not pip.
+numpy==1.26.4               # ROS 2 Jazzy is built against NumPy 1.x
+scipy==1.15.0               # scipy.spatial.transform.Rotation (tf of the cameras)
+PyYAML==6.0.1               # write_calibration_yaml.py
+opencv-python==4.11.0.86    # [dev-pc] the image uses Ubuntu's python3-opencv instead: it has GStreamer (CSI cameras)

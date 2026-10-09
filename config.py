@@ -312,6 +312,9 @@ CALIBRATION_IMU_CAMERA_TIME_OFFSET_SEC = None
 # Publish periods (seconds) of the two streams.
 TOPIC_PUBLISHER_TIMER_STEREO_CAMERA = _env_float('TOPIC_PUBLISHER_TIMER_STEREO_CAMERA', 0.040)     # ~25 Hz
 TOPIC_PUBLISHER_TIMER_BELLY_CAMERA = _env_float('TOPIC_PUBLISHER_TIMER_BELLY_CAMERA', 0.0333)  # ~30 Hz
+# A GStreamer camera that has not opened after this many seconds counts as missing
+# (OpenCV can otherwise block forever, e.g. nvargus-daemon down or a CSI cable out).
+CAMERA_OPEN_TIMEOUT_S = _env_float('CAMERA_OPEN_TIMEOUT_S', 10.0)
 # Per-stream fps / stats line in the log every N seconds (minimum 5).
 MEASURE_CAMERA_LATENCY_PRINT_SECS = _env_float('MEASURE_CAMERA_LATENCY_PRINT_SECS', 5.0)
 

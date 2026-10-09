@@ -3,3 +3,7 @@ __pycache__/
 logs/
 calibration.yaml
 .vscode/
+# Python venv (setup/install_requirements.sh --venv cameras_env)
+cameras_env/
+venv/
+.venv/

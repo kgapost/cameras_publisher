@@ -1,5 +1,7 @@
 # Cameras Publisher
 
+> **Deploying on the drone (SWARMER integrators):** see [README_SWARMER.md](README_SWARMER.md) - `docker compose up -d`.
+
 One ROS 2 node, `publish_cameras.py`, that opens the drone's cameras on the Jetson and publishes them as ROS 2 topics:
 
 - the **stereo pair** (front, CSI, Waveshare/Seeed IMX219-83), used by **obstacle detection**;
@@ -30,7 +32,7 @@ git clone https://swarmer.sgx-dev.com/swarmer-group/cameras_publisher.git && cd 
 docker build -t cameras-publisher:latest .
 ```
 
-The image must be built on the Jetson (aarch64). A first build takes about 40 minutes (OpenCV with GStreamer). If the `visual_odometry` or `obstacle_detection` image was already built on that Jetson, Docker reuses its OpenCV layers and the build takes a minute.
+Build it on the Jetson (it also builds on an x86 PC, for testing). It takes a few minutes: the base is the official ROS 2 Jazzy image (Ubuntu 24.04) and OpenCV is Ubuntu's `python3-opencv`, which already has GStreamer. There is no CUDA and no PyTorch in the image. The Jetson camera plugins (`nvarguscamerasrc`, `nvvidconv`) are not in the image either: `--runtime nvidia` mounts them from the Jetson at `docker run`.
 
 ## Run
 
@@ -58,6 +60,14 @@ Check it: `ros2 topic hz /camera/belly/image_compressed`, `docker logs -f camera
 Pass the belly camera's `/dev/videoN` with `--device` (the server also tries the other `/dev/video*` nodes it can see). Use `--runtime nvidia`, not `--gpus all`.
 
 **Options:** `--no-stereo`, `--no-belly`, `--backend v4l2|gstreamer` (stereo), `--left/--right /dev/videoN` (v4l2 stereo), `--belly /dev/videoN`, `--belly-backend`, `--compressed/--raw`, `--width/--height/--fps` (v4l2 stereo capture), `--hw-scale` (resize on the Jetson hardware scaler).
+
+**Without Docker** (Dev PC, a USB camera): ROS 2 Jazzy installed, then
+```bash
+setup/install_requirements.sh --venv cameras_env      # once: venv from requirements.txt
+source /opt/ros/jazzy/setup.bash && source cameras_env/bin/activate
+python3 publish_cameras.py --no-stereo --belly /dev/video0
+```
+`requirements.txt` is the only list of Python packages; the image installs the same file (except the `[dev-pc]` lines).
 
 ## What it does when things go wrong
 

@@ -1,8 +1,14 @@
-# Only what the Dockerfile COPYs needs to reach the daemon.
-.git/
-.gitignore
-__pycache__/
-*.pyc
-logs/
-tools/
-*.md
+# Allow-list: only what the Dockerfile COPYs reaches the Docker daemon
+# (keeps venvs, AirSim binaries, logs and ros2_ws out of the build context).
+*
+!requirements.txt
+!setup/install_requirements.sh
+!config.py
+!utils_*.py
+!node_*.py
+!test_*.py
+!publish_cameras.py
+!write_calibration_yaml.py
+!patch/
+!litemono/
+**/__pycache__

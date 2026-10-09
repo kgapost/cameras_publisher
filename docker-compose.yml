@@ -1,0 +1,24 @@
+# SWARMER deployment on the Jetson (mission computer):
+#   docker compose up -d        # builds the image the first time
+# Run ONE cameras-publisher per drone; visual_odometry and obstacle_detection read its topics.
+services:
+  cameras-publisher:
+    image: cameras-publisher:latest
+    build: .
+    container_name: cameras-publisher
+    runtime: nvidia            # mounts the Jetson camera plugins (nvarguscamerasrc, nvvidconv)
+    network_mode: host         # ROS 2 / DDS discovery
+    privileged: true           # every /dev/video* (the USB belly camera's node can change) + CSI VI/ISP nodes
+    restart: unless-stopped    # also retries when no camera is found at start-up
+    stop_signal: SIGINT
+    environment:
+      ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-42}
+      # Any config.py setting can be set here as OD_<NAME>, e.g.:
+      # OD_BELLY_CAMERA_FX: "552.0"          # belly lens calibration (fx, fy, cx, cy, at 640x400)
+      # OD_BELLY_CAMERA_EXPOSURE: "30"       # fixed exposure, 100 us units (-1 = auto)
+      # OD_USE_COMPRESSED_IMAGE_TOPICS: "0"  # raw images (consumers must match)
+    volumes:
+      - /tmp/argus_socket:/tmp/argus_socket   # nvargus-daemon on the host (CSI cameras)
+      - ./logs:/workspace/logs
+    # CSI stereo pair + USB belly camera, whatever is plugged in. Add --no-belly / --no-stereo to limit.
+    command: python3 publish_cameras.py --backend gstreamer

@@ -8,6 +8,7 @@ import glob
 import math
 import os
 import re
+import threading
 import time
 
 import config
@@ -15,10 +16,29 @@ import config
 import cv2
 
 
+def _open_gstreamer(pipeline):
+    """cv2.VideoCapture of a GStreamer pipeline, or None if opening takes longer than
+    config.CAMERA_OPEN_TIMEOUT_S. OpenCV can block forever when a pipeline cannot
+    start (missing plugin, nvargus-daemon down, CSI camera unplugged); the open runs
+    in a helper thread so that camera is reported as missing instead of hanging the
+    whole server. A thread that never returns is left behind (daemon)."""
+    result = {}
+    t = threading.Thread(target=lambda: result.setdefault('cap', cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)),
+                         name='gst-open', daemon=True)
+    t.start()
+    t.join(config.CAMERA_OPEN_TIMEOUT_S)
+    if t.is_alive():
+        print(f"[camera] GStreamer pipeline did not open within {config.CAMERA_OPEN_TIMEOUT_S:.0f}s "
+              f"- treated as missing: {pipeline}", flush=True)
+        return None
+    return result.get('cap')
+
+
 def _build_capture(backend, device, pipeline):
-    """Open a single cv2.VideoCapture for the requested backend."""
+    """Open a single cv2.VideoCapture for the requested backend (None if a GStreamer
+    pipeline does not open in time)."""
     if backend == 'gstreamer':
-        return cv2.VideoCapture(pipeline, cv2.CAP_GSTREAMER)
+        return _open_gstreamer(pipeline)
     cap = cv2.VideoCapture(device)
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, config.STEREO_CAMERA_CAPTURE_WIDTH)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, config.STEREO_CAMERA_CAPTURE_HEIGHT)
@@ -61,7 +81,7 @@ def build_belly_capture(device=None):
     pipeline when BELLY_CAMERA_BACKEND='gstreamer'. `device` overrides
     config.BELLY_CAMERA_DEVICE (used by find_belly_capture)."""
     if config.BELLY_CAMERA_BACKEND == 'gstreamer':
-        return cv2.VideoCapture(config.BELLY_CAMERA_PIPELINE, cv2.CAP_GSTREAMER)
+        return _open_gstreamer(config.BELLY_CAMERA_PIPELINE)
     cap = cv2.VideoCapture(config.BELLY_CAMERA_DEVICE if device is None else device,
                            cv2.CAP_V4L2)
     if not cap.isOpened():
