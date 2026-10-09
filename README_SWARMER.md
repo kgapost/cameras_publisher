@@ -54,7 +54,7 @@ Publishes only; subscribes to nothing. QoS: reliable, volatile, depth 10.
 ## Settings
 - `ROS_DOMAIN_ID` (default **42**) must be the same for every SWARMER module and for PX4's uXRCE-DDS agent: `ROS_DOMAIN_ID=0 docker compose up -d`. The RMW is Cyclone DDS.
 - Any setting of `config.py` can be changed in `docker-compose.yml` as `OD_<NAME>` (no rebuild).
-- **Belly lens calibration**: set `OD_BELLY_CAMERA_FX/FY/CX/CY` and `OD_BELLY_CAMERA_DISTORTION_COEFFS` once per camera (checkerboard at 640x400). Uncalibrated, the visual odometry has a scale error of about 8 %.
+- **Belly lens calibration** (once per camera, checkerboard at 640x400): `fx`, `fy`, `cx`, `cy` as `OD_BELLY_CAMERA_FX/FY/CX/CY` in `docker-compose.yml` (then `docker compose up -d`); the 5 distortion coefficients as `BELLY_CAMERA_DISTORTION_COEFFS` in `config.py` (then `docker compose up -d --build`), they cannot be set with an `OD_` variable. Uncalibrated, the visual odometry has a scale error of about 8 %.
 - Measure and set the mounts: `OD_BELLY_CAMERA_MOUNT_*_DEG`, `OD_BELLY_CAMERA_T*_M` (offset from the IMU) and `OD_STEREO_CAMERA_BASELINE_CMS` (6 cm).
 - Fixed belly exposure (less motion blur): `OD_BELLY_CAMERA_EXPOSURE: "30"` (100 µs units; default auto).
 
