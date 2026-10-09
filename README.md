@@ -78,7 +78,7 @@ python3 publish_cameras.py --no-stereo --belly /dev/video0
 
 ## Configuration
 
-All settings are in `config.py`. Any of them can be overridden for one run with an environment variable named `OD_<NAME>`, e.g. `-e OD_BELLY_CAMERA_EXPOSURE=30` on `docker run`. The ones you are most likely to set:
+All settings are in `config.py`. Any of them can be overridden for one run with an environment variable named `CP_<NAME>` (`CP_` = this module; the visual odometry uses `VO_`, obstacle detection `OD_`), e.g. `-e CP_BELLY_CAMERA_EXPOSURE=30` on `docker run`. The ones you are most likely to set:
 
 | Setting | Default | Meaning |
 |---|---|---|

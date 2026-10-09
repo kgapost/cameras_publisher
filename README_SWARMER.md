@@ -21,7 +21,7 @@ docker compose logs -f        # live log (see Logs below)
 docker compose down           # stop
 ```
 ## Cameras
-The setting that controls each point is in parentheses (`config.py`, changeable as `OD_<NAME>` in `docker-compose.yml`).
+The setting that controls each point is in parentheses (`config.py`, changeable as `CP_<NAME>` in `docker-compose.yml`).
 
 **Belly: Arducam B0495** (AR0234, 2.3 MP, global shutter, USB 3.0 UVC). Opened with V4L2 (`BELLY_CAMERA_BACKEND`). Captured at 960x600 YUYV, 60 fps (`BELLY_CAMERA_CAPTURE_WIDTH/HEIGHT`, `BELLY_CAMERA_FOURCC`, `BELLY_CAMERA_FPS`); published at 640x400 (`BELLY_CAMERA_WIDTH/HEIGHT`), **30 Hz** (`TOPIC_PUBLISHER_TIMER_BELLY_CAMERA` = 0.0333 s).
 
@@ -49,14 +49,14 @@ Publishes only; subscribes to nothing. QoS: reliable, volatile, depth 10.
 
 - Frame ids: `camera_left`, `camera_right`, `camera_belly` (body FRD axes).
 - Belly images are stamped with the **capture time**, stereo images with the publish time.
-- With `OD_USE_COMPRESSED_IMAGE_TOPICS: "0"` the images go out raw (`sensor_msgs/Image`) on `.../image_raw`. All consumers must use the same setting.
+- With `CP_USE_COMPRESSED_IMAGE_TOPICS: "0"` the images go out raw (`sensor_msgs/Image`) on `.../image_raw`. All consumers must use the same setting.
 
 ## Settings
-- `ROS_DOMAIN_ID` (default **42**) must be the same for every SWARMER module and for PX4's uXRCE-DDS agent: `ROS_DOMAIN_ID=0 docker compose up -d`. The RMW is Cyclone DDS.
-- Almost every setting of `config.py` can be changed in `docker-compose.yml` with the prefix `OD_` added to its name (the same prefix in all modules), e.g. `BELLY_CAMERA_EXPOSURE` becomes `OD_BELLY_CAMERA_EXPOSURE`. Then run `docker compose up -d` (no rebuild). The exceptions are fixed values such as `BELLY_CAMERA_DISTORTION_COEFFS`; the ROS domain is the plain variable `ROS_DOMAIN_ID`.
-- **Belly lens calibration** (once per camera, checkerboard at 640x400): `fx`, `fy`, `cx`, `cy` as `OD_BELLY_CAMERA_FX/FY/CX/CY` in `docker-compose.yml` (then `docker compose up -d`); the 5 distortion coefficients as `BELLY_CAMERA_DISTORTION_COEFFS` in `config.py` (then `docker compose up -d --build`), they cannot be set with an `OD_` variable. Uncalibrated, the visual odometry has a scale error of about 8 %.
-- Measure and set the mounts: `OD_BELLY_CAMERA_MOUNT_*_DEG`, `OD_BELLY_CAMERA_T*_M` (offset from the IMU) and `OD_STEREO_CAMERA_BASELINE_CMS` (6 cm).
-- Fixed belly exposure (less motion blur): `OD_BELLY_CAMERA_EXPOSURE: "30"` (100 µs units; default auto).
+- `ROS_DOMAIN_ID` (default **42**) must be the same for every SWARMER module and for PX4's uXRCE-DDS agent: it is fixed to 42 in `docker-compose.yml` (a `ROS_DOMAIN_ID` in your shell does not change it); set PX4's `UXRCE_DDS_DOM_ID` to 42 too. The RMW is Cyclone DDS.
+- Almost every setting of `config.py` can be changed in `docker-compose.yml` as `CP_<NAME>`: the prefix `CP_` (= this module's `config.py`; visual odometry uses `VO_`, obstacle detection `OD_`) added to the setting's name, e.g. `BELLY_CAMERA_EXPOSURE` becomes `CP_BELLY_CAMERA_EXPOSURE`. Then run `docker compose up -d` (no rebuild). The exceptions are fixed values such as `BELLY_CAMERA_DISTORTION_COEFFS`; the ROS domain is the plain variable `ROS_DOMAIN_ID`.
+- **Belly lens calibration** (once per camera, checkerboard at 640x400): `fx`, `fy`, `cx`, `cy` as `CP_BELLY_CAMERA_FX/FY/CX/CY` in `docker-compose.yml` (then `docker compose up -d`); the 5 distortion coefficients as `BELLY_CAMERA_DISTORTION_COEFFS` in `config.py` (then `docker compose up -d --build`), they cannot be set with a `CP_` variable. Uncalibrated, the visual odometry has a scale error of about 8 %.
+- Measure and set the mounts: `CP_BELLY_CAMERA_MOUNT_*_DEG`, `CP_BELLY_CAMERA_T*_M` (offset from the IMU) and `CP_STEREO_CAMERA_BASELINE_CMS` (6 cm).
+- Fixed belly exposure (less motion blur): `CP_BELLY_CAMERA_EXPOSURE: "30"` (100 µs units; default auto).
 
 ## Logs
 Written in the container to **`/workspace/logs/publish_cameras.log`** (DEBUG: devices found, every open/re-open, intrinsics, stalls, errors, fps per stream every 5 s; rotates at 5 MB, keeps `.1`-`.3`). `docker-compose.yml` mounts the folder as `logs/` next to it on the Jetson:

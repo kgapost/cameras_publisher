@@ -1,8 +1,8 @@
 """Configuration of the cameras publisher (publish_cameras.py).
 
 Every parameter declared as NAME = _env_<type>('NAME', <default>) can be
-overridden without editing this file: export OD_NAME=<value> before starting
-(the OD_ prefix is shared with the other SWARMER modules). Topic names and
+overridden without editing this file: export CP_NAME=<value> before starting
+(CP_ = this module's config; visual odometry uses VO_, obstacle detection OD_). Topic names and
 image sizes must match the consumers (visual_odometry, obstacle_detection).
 """
 import os
@@ -31,7 +31,7 @@ else:
 # (instead of each machine's own shell/Dockerfile env) keeps both sides in sync.
 # Override per-machine without editing this file via the env var:
 #   export ROS_DOMAIN_ID=42
-# (This one keeps its standard ROS name - no OD_ prefix - because rclpy and every
+# (This one keeps its standard ROS name - no CP_ prefix - because rclpy and every
 # other ROS tool read it directly.)
 ROS_DOMAIN_ID = 42
 if os.environ.get("ROS_DOMAIN_ID") is None:
@@ -48,20 +48,20 @@ else:
 #
 #   NAME = _env_<type>('NAME', <default>)
 #
-# which reads the environment variable OD_NAME and falls back to <default> - the
+# which reads the environment variable CP_NAME and falls back to <default> - the
 # literal written right here - when it is unset or empty. So config.py stays the
 # single source of truth for every default, while a field session can change any
-# of them with `export OD_NAME=...` before launching: no edit to a file that is
+# of them with `export CP_NAME=...` before launching: no edit to a file that is
 # mounted read-only into a container on the Jetson, and no rebuild.
 #
-# Only the ENVIRONMENT VARIABLE carries the OD_ prefix. The config parameter keeps
+# Only the ENVIRONMENT VARIABLE carries the CP_ prefix. The config parameter keeps
 # its own name, so every `config.NAME` reference across the codebase is unchanged.
 #
 # Parameters NOT declared through an _env_* helper are deliberately fixed - either
 # design choices (or debug
 # switches that must stay off in the field (see the Debug section below).
 
-_ENV_PREFIX = 'OD_'
+_ENV_PREFIX = 'CP_'
 
 _ENV_LEGACY = {}   # old env var names still honoured (none here)
 
@@ -73,7 +73,7 @@ _ENV_OVERRIDES = []
 def _env_lookup(name):
     """(env_var, raw_string) for config parameter `name`, or (None, None) when no
     environment variable is set for it. An empty / whitespace-only value counts as
-    unset, so a `export OD_FOO=` left in a sourced script means "use the default"
+    unset, so a `export CP_FOO=` left in a sourced script means "use the default"
     rather than "set it to the empty string"."""
     candidates = [_ENV_PREFIX + name]
     if name in _ENV_LEGACY:
@@ -86,7 +86,7 @@ def _env_lookup(name):
 
 
 def _env_get(name, default, parse):
-    """Core override: return parse(OD_<name>) if set, else `default`.
+    """Core override: return parse(CP_<name>) if set, else `default`.
 
     A value that fails to parse is a HARD error rather than a silent fallback: on
     a field laptop a typo'd export that is quietly ignored means the whole flight
@@ -201,7 +201,7 @@ STEREO_CAMERA_RIGHT_DEVICE = _env_device('STEREO_CAMERA_RIGHT_DEVICE', 1)
 
 # GStreamer pipelines (STEREO_CAMERA_BACKEND='gstreamer'). Output must be BGR.
 # Override from the shell with single quotes:
-#   export OD_STEREO_CAMERA_LEFT_PIPELINE='nvarguscamerasrc ...'
+#   export CP_STEREO_CAMERA_LEFT_PIPELINE='nvarguscamerasrc ...'
 STEREO_CAMERA_LEFT_PIPELINE = _env_str('STEREO_CAMERA_LEFT_PIPELINE', (
     "nvarguscamerasrc sensor-id=0 ! video/x-raw(memory:NVMM),width=640,height=480,framerate=25/1 "
     "! nvvidconv ! video/x-raw,format=BGRx ! videoconvert ! video/x-raw,format=BGR ! appsink drop=1"))

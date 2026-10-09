@@ -101,7 +101,7 @@ def build_calibration():
                 "PLACEHOLDER (identity/zero) - the mount offset between the IMU "
                 "and the camera has not been physically measured yet. Set "
                 "config.py's CALIBRATION_IMU_TO_CAMERA_* (or the matching "
-                "OD_CALIBRATION_IMU_TO_CAMERA_* env vars) from calipers/CAD and "
+                "CP_CALIBRATION_IMU_TO_CAMERA_* env vars) from calipers/CAD and "
                 "flip CALIBRATION_IMU_TO_CAMERA_MEASURED to true before this "
                 "file is treated as a real calibration."
             ),

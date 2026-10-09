@@ -12,11 +12,11 @@ services:
     restart: unless-stopped    # also retries when no camera is found at start-up
     stop_signal: SIGINT
     environment:
-      ROS_DOMAIN_ID: ${ROS_DOMAIN_ID:-42}
-      # Any config.py setting can be set here as OD_<NAME>, e.g.:
-      # OD_BELLY_CAMERA_FX: "552.0"          # belly lens calibration (fx, fy, cx, cy, at 640x400)
-      # OD_BELLY_CAMERA_EXPOSURE: "30"       # fixed exposure, 100 us units (-1 = auto)
-      # OD_USE_COMPRESSED_IMAGE_TOPICS: "0"  # raw images (consumers must match)
+      ROS_DOMAIN_ID: "42"                   # fixed: every SWARMER module and PX4 (UXRCE_DDS_DOM_ID) use 42
+      # Any config.py setting NAME can be set here as CP_<NAME> (CP_ = this module), e.g.:
+      # CP_BELLY_CAMERA_FX: "552.0"          # belly lens calibration (fx, fy, cx, cy, at 640x400)
+      # CP_BELLY_CAMERA_EXPOSURE: "30"       # fixed exposure, 100 us units (-1 = auto)
+      # CP_USE_COMPRESSED_IMAGE_TOPICS: "0"  # raw images (consumers must match)
     volumes:
       - /tmp/argus_socket:/tmp/argus_socket   # nvargus-daemon on the host (CSI cameras)
       - ./logs:/workspace/logs
