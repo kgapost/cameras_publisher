@@ -16,6 +16,7 @@ docker compose build          # on the Jetson, a few minutes (image: cameras-pub
 ## Deploy
 ```bash
 docker compose up -d          # start (also after every reboot: restart: unless-stopped)
+docker compose up -d --build  # after a git pull: the code is in the image, without --build the old code runs
 docker compose logs -f        # live log (see Logs below)
 docker compose down           # stop
 ```
