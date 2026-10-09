@@ -19,7 +19,21 @@ docker compose up -d          # start (also after every reboot: restart: unless-
 docker compose logs -f        # log; also ./logs/publish_cameras.log
 docker compose down           # stop
 ```
-At start-up it looks for each camera and publishes only what it finds (stereo, belly, or both). A CSI camera that does not open within 10 s counts as missing. If it finds none it exits and Docker restarts it, so cameras plugged in later are picked up. A camera that stops sending frames is re-opened automatically.
+## Cameras
+The setting that controls each point is in parentheses (`config.py`, changeable as `OD_<NAME>` in `docker-compose.yml`).
+
+**Belly: Arducam B0495** (AR0234, 2.3 MP, global shutter, USB 3.0 UVC). Opened with V4L2 (`BELLY_CAMERA_BACKEND`). Captured at 960x600 YUYV, 60 fps (`BELLY_CAMERA_CAPTURE_WIDTH/HEIGHT`, `BELLY_CAMERA_FOURCC`, `BELLY_CAMERA_FPS`); published at 640x400 (`BELLY_CAMERA_WIDTH/HEIGHT`), **30 Hz** (`TOPIC_PUBLISHER_TIMER_BELLY_CAMERA` = 0.0333 s).
+
+**Front stereo: Waveshare IMX219-83 Stereo Camera** (two 8 MP IMX219, 83° FOV (`FOV_D`), 60 mm baseline (`STEREO_CAMERA_BASELINE_CMS`)), on the Jetson's two **CSI** ports. A CSI sensor gives raw Bayer data (`RG10`) that plain V4L2/OpenCV cannot use; only NVIDIA's `nvarguscamerasrc` (Jetson ISP) turns it into images, and it is a **GStreamer** element. That is why the stereo pair is opened through GStreamer pipelines (`STEREO_CAMERA_BACKEND` = `gstreamer`) and why OpenCV must be built with GStreamer support: the image uses Ubuntu's OpenCV package, which has it. Left = `sensor-id=0`, right = `sensor-id=1` (`STEREO_CAMERA_LEFT/RIGHT_PIPELINE`), captured at 640x480, 25 fps; published at 640x400 (`IMG_W/H_PROCESS`), **25 Hz** (`TOPIC_PUBLISHER_TIMER_STEREO_CAMERA` = 0.040 s).
+
+**Search order at start-up** (each stream can be switched off: `BELLY_CAMERA_ENABLED`, `STEREO_CAMERA_ENABLED`, or `--no-belly` / `--no-stereo`):
+1. **Belly** first: `/dev/video0` (`BELLY_CAMERA_DEVICE`), then every other `/dev/video*` in number order. Skipped: the CSI sensor nodes and nodes that open but deliver no frame (e.g. the camera's UVC metadata node). The first node that delivers frames is the belly camera.
+2. **Left** stereo camera, then 3. **Right**, each on its own (never the belly's node). A camera whose pipeline does not open within 10 s counts as missing (`CAMERA_OPEN_TIMEOUT_S`).
+
+**If a camera is not found or fails:**
+- **None found:** error in the log, exit code 1, and Docker restarts the container (`restart: unless-stopped`), which searches again.
+- **Some found:** it publishes those (belly only, stereo only, left only, ...). The missing ones are **not** searched again while it runs: after plugging one in, `docker compose restart`.
+- **A camera stops sending frames:** the log shows `STALLED` after 3 s; after 5 s without frames it is re-opened (`BELLY_CAMERA_REOPEN_AFTER_S`, `STEREO_CAMERA_REOPEN_AFTER_S`), then retried with a growing pause (up to 30 s). The belly camera is searched again over all `/dev/video*`, since its node can change. `Recovered` is logged when frames return.
 
 ## Topics
 Publishes only; subscribes to nothing. QoS: reliable, volatile, depth 10.
