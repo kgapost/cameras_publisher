@@ -1,6 +1,6 @@
 # cameras_publisher (SWARMER module)
 
-Publishes the drone's cameras on ROS 2: the front **stereo pair** (CSI, used by `obstacle_detection`) and the **belly camera** (USB, used by `visual_odometry`). It is the only module that opens the cameras.
+Publishes the drone's cameras on ROS 2: the **belly camera** (USB, used by `visual_odometry`) and, optionally, the front **stereo pair** (CSI, used by `obstacle_detection`; **off by default**: switch it on with `CP_STEREO_CAMERA_ENABLED: "1"` in `docker-compose.yml` or `--stereo`). It is the only module that opens the cameras.
 
 ## Requirements
 - Jetson with JetPack 6 (L4T r36.x), Docker with the NVIDIA container runtime (JetPack default) and Docker Compose.
@@ -27,7 +27,7 @@ The setting that controls each point is in parentheses (`config.py`, changeable 
 
 **Front stereo: Waveshare IMX219-83 Stereo Camera** (two 8 MP IMX219, 83° FOV (`FOV_D`), 60 mm baseline (`STEREO_CAMERA_BASELINE_CMS`)), on the Jetson's two **CSI** ports. A CSI sensor gives raw Bayer data (`RG10`) that plain V4L2/OpenCV cannot use; only NVIDIA's `nvarguscamerasrc` (Jetson ISP) turns it into images, and it is a **GStreamer** element. That is why the stereo pair is opened through GStreamer pipelines (`STEREO_CAMERA_BACKEND` = `gstreamer`) and why OpenCV must be built with GStreamer support: the image uses Ubuntu's OpenCV package, which has it. Left = `sensor-id=0`, right = `sensor-id=1` (`STEREO_CAMERA_LEFT/RIGHT_PIPELINE`), captured at 640x480, 25 fps; published at 640x400 (`IMG_W/H_PROCESS`), **25 Hz** (`TOPIC_PUBLISHER_TIMER_STEREO_CAMERA` = 0.040 s).
 
-**Search order at start-up** (each stream can be switched off: `BELLY_CAMERA_ENABLED`, `STEREO_CAMERA_ENABLED`, or `--no-belly` / `--no-stereo`):
+**Search order at start-up** (each stream is switched with `BELLY_CAMERA_ENABLED` / `STEREO_CAMERA_ENABLED` or `--no-belly` / `--stereo`; the stereo pair is off by default and is not searched):
 1. **Belly** first: `/dev/video0` (`BELLY_CAMERA_DEVICE`), then every other `/dev/video*` in number order. Skipped: the CSI sensor nodes and nodes that open but deliver no frame (e.g. the camera's UVC metadata node). The first node that delivers frames is the belly camera.
 2. **Left** stereo camera, then 3. **Right**, each on its own (never the belly's node). A camera whose pipeline does not open within 10 s counts as missing (`CAMERA_OPEN_TIMEOUT_S`).
 

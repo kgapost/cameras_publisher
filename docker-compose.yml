@@ -20,5 +20,6 @@ services:
     volumes:
       - /tmp/argus_socket:/tmp/argus_socket   # nvargus-daemon on the host (CSI cameras)
       - ./logs:/workspace/logs
-    # CSI stereo pair + USB belly camera, whatever is plugged in. Add --no-belly / --no-stereo to limit.
+    # USB belly camera. The CSI stereo pair is OFF by default (obstacle detection is not used yet): add --stereo
+    # (or CP_STEREO_CAMERA_ENABLED: "1" above) to publish it too; --no-belly limits it to the stereo pair.
     command: python3 publish_cameras.py --backend gstreamer

@@ -9,7 +9,7 @@ tf_static frame:
              every config.TOPIC_PUBLISHER_TIMER_BELLY_CAMERA s
 
 Each stream is switched by config.STEREO_CAMERA_ENABLED / BELLY_CAMERA_ENABLED
-(both on by default; --no-stereo / --no-belly per run). Every enabled camera is
+(belly on, stereo OFF by default; --stereo / --no-belly per run). Every enabled camera is
 found at start-up and only what is found is published (belly only, stereo only,
 left only, right only, or everything). If nothing is found the node exits with an
 error, so a docker restart policy retries it.
@@ -678,6 +678,8 @@ def _parse_args():
                                        "(default: config.BELLY_CAMERA_DEVICE).")
     belly.add_argument('--no-belly', dest='no_belly', action='store_true',
                        help="Do not publish the belly camera (config.BELLY_CAMERA_ENABLED=False).")
+    p.add_argument('--stereo', action='store_true',
+                   help="Publish the stereo pair (config.STEREO_CAMERA_ENABLED=True; off by default).")
     p.add_argument('--no-stereo', dest='no_stereo', action='store_true',
                    help="Do not publish the stereo pair (config.STEREO_CAMERA_ENABLED=False).")
     p.add_argument('--belly-backend', choices=('v4l2', 'gstreamer'),
@@ -713,6 +715,8 @@ def _apply_overrides(args):
         config.BELLY_CAMERA_ENABLED = True
     if args.no_belly:
         config.BELLY_CAMERA_ENABLED = False
+    if args.stereo:
+        config.STEREO_CAMERA_ENABLED = True
     if args.no_stereo:
         config.STEREO_CAMERA_ENABLED = False
     if args.belly_backend is not None:

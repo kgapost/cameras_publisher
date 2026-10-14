@@ -39,15 +39,15 @@ Build it on the Jetson (it also builds on an x86 PC, for testing). It takes a fe
 From the repo folder (the folder is mounted, so `logs/` and edits to `config.py` are used without a rebuild):
 
 ```bash
-# Everything that is plugged in: CSI stereo + USB belly camera
+# USB belly camera, plus the CSI stereo pair with --stereo (stereo is off by default)
 docker run -d --name cameras-publisher --restart unless-stopped --runtime nvidia --network host \
   -v /tmp/argus_socket:/tmp/argus_socket --device /dev/video0 -v "$(pwd)":/workspace cameras-publisher:latest \
-  bash -c "source /opt/ros/jazzy/setup.bash && python3 publish_cameras.py --backend gstreamer"
+  bash -c "source /opt/ros/jazzy/setup.bash && python3 publish_cameras.py --backend gstreamer --stereo"
 
 # Stereo only (obstacle detection)
 docker run --rm -it --runtime nvidia --network host -v /tmp/argus_socket:/tmp/argus_socket \
   -v "$(pwd)":/workspace cameras-publisher:latest \
-  bash -c "source /opt/ros/jazzy/setup.bash && python3 publish_cameras.py --backend gstreamer --no-belly"
+  bash -c "source /opt/ros/jazzy/setup.bash && python3 publish_cameras.py --backend gstreamer --stereo --no-belly"
 
 # Belly only (visual odometry)
 docker run --rm -it --runtime nvidia --network host --device /dev/video0 \
@@ -59,7 +59,7 @@ Check it: `ros2 topic hz /camera/belly/image_compressed`, `docker logs -f camera
 
 Pass the belly camera's `/dev/videoN` with `--device` (the server also tries the other `/dev/video*` nodes it can see). Use `--runtime nvidia`, not `--gpus all`.
 
-**Options:** `--no-stereo`, `--no-belly`, `--backend v4l2|gstreamer` (stereo), `--left/--right /dev/videoN` (v4l2 stereo), `--belly /dev/videoN`, `--belly-backend`, `--compressed/--raw`, `--width/--height/--fps` (v4l2 stereo capture), `--hw-scale` (resize on the Jetson hardware scaler).
+**Options:** `--stereo` (stereo is off by default), `--no-stereo`, `--no-belly`, `--backend v4l2|gstreamer` (stereo), `--left/--right /dev/videoN` (v4l2 stereo), `--belly /dev/videoN`, `--belly-backend`, `--compressed/--raw`, `--width/--height/--fps` (v4l2 stereo capture), `--hw-scale` (resize on the Jetson hardware scaler).
 
 **Without Docker** (Dev PC, a USB camera): ROS 2 Jazzy installed, then
 ```bash
@@ -110,7 +110,7 @@ AR0234, 1/2.6" **global shutter**, 1920x1200 (16:10), USB 3.0 (UVC), YUY2 only, 
 
 | Module | Needs | Run with |
 |---|---|---|
-| `obstacle_detection` | stereo pair | `--backend gstreamer --no-belly` |
-| `visual_odometry` | belly camera | `--no-stereo` (or no flag if both run) |
+| `obstacle_detection` | stereo pair | `--backend gstreamer --stereo --no-belly` |
+| `visual_odometry` | belly camera | no flag (belly only is the default; add `--stereo` if both run) |
 
 In simulation neither module uses this server: `publish_airsim.py` (in each module's repo) publishes the same topics from AirSim.

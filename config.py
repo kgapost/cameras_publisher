@@ -184,8 +184,9 @@ FOV_D = _env_float('FOV_D', 83)
 STEREO_CAMERA_BASELINE_CMS = _env_float('STEREO_CAMERA_BASELINE_CMS', 6.0)
                                   # Waveshare/Seeed IMX219-83 datasheet: Baseline Length 60mm
 
-# Publish the stereo pair (--no-stereo turns it off per run).
-STEREO_CAMERA_ENABLED = _env_bool('STEREO_CAMERA_ENABLED', True)
+# Publish the stereo pair. OFF by default (not needed without obstacle detection):
+# CP_STEREO_CAMERA_ENABLED=1 in docker-compose.yml or --stereo per run turns it on.
+STEREO_CAMERA_ENABLED = _env_bool('STEREO_CAMERA_ENABLED', False)
 
 # Capture backend for the stereo pair:
 #   'gstreamer' : GStreamer pipelines below - REQUIRED for the Jetson CSI cameras
