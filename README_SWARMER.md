@@ -1,6 +1,6 @@
 # cameras_publisher (SWARMER module)
 
-Publishes the drone's cameras on ROS 2: the **belly camera** (USB, used by `visual_odometry`) and, optionally, the front **stereo pair** (CSI, used by `obstacle_detection`; **off by default**: switch it on with `CP_STEREO_CAMERA_ENABLED: "1"` in `docker-compose.yml` or `--stereo`). It is the only module that opens the cameras.
+Publishes the drone's cameras on ROS 2: the **belly camera** (USB, used by `visual_odometry`) and, optionally, the front **stereo pair** (CSI, used by `obstacle_detection`; **off by default**: switch it on with `CP_STEREO_CAMERA_ENABLED=1` in `.env` or `--stereo`). It is the only module that opens the cameras.
 
 ## Requirements
 - Jetson with JetPack 6 (L4T r36.x), Docker with the NVIDIA container runtime (JetPack default) and Docker Compose.
@@ -14,6 +14,12 @@ docker compose build          # on the Jetson, a few minutes (image: cameras-pub
 ```
 
 ## Deploy
+Edit `.env` next to `docker-compose.yml` before starting. Compose passes its
+settings into the container. Defaults select belly only; for stereo only set
+`CP_BELLY_CAMERA_ENABLED=0` and `CP_STEREO_CAMERA_ENABLED=1`. Leave
+`CP_CAPTURE_API_MODE=auto` to map the capture services accordingly. Apply `.env`
+changes with `docker compose up -d`; no rebuild is required for settings alone.
+
 ```bash
 docker compose up -d          # start (also after every reboot: restart: unless-stopped)
 docker compose up -d --build  # after a git pull: the code is in the image, without --build the old code runs
@@ -51,10 +57,194 @@ Publishes only; subscribes to nothing. QoS: reliable, volatile, depth 10.
 - Belly images are stamped with the **capture time**, stereo images with the publish time.
 - With `CP_USE_COMPRESSED_IMAGE_TOPICS: "0"` the images go out raw (`sensor_msgs/Image`) on `.../image_raw`. All consumers must use the same setting.
 
+## Capture API (save images and videos)
+
+Seven ROS 2 services of type `std_srvs/srv/Trigger` are available under
+`/camera/capture`. Responses contain `success` and a `message` with the saved path, recording state or warning. Warnings return `success: false`, appear in the node log, and do not create files or change other recordings.
+
+| Service suffix | Belly mode | Stereo mode |
+|---|---|---|
+| `health` | Publish health JSON | Publish health JSON |
+| `image1` | Save belly JPEG | Save left JPEG |
+| `image2` | Warn: no camera | Save right JPEG |
+| `video1_start` | Start belly MP4 | Start left MP4 |
+| `video1_stop` | Finalize belly MP4 | Finalize left MP4 |
+| `video2_start` | Warn: no camera | Start right MP4 |
+| `video2_stop` | Warn: no camera | Finalize right MP4 |
+
+`CP_CAPTURE_API_MODE` defaults to `auto`: stereo mapping when
+`STEREO_CAMERA_ENABLED` is enabled (including `--stereo`), belly mapping
+otherwise.
+Set it to `belly` or `stereo` to select explicitly when publishing both streams.
+A missing stereo camera keeps its left/right slot; it is never replaced by belly.
+Stereo-only deployment uses `--stereo --no-belly`.
+Separate instances on the same ROS domain should use different `CP_CAPTURE_API_NAMESPACE` values to avoid duplicate service names.
+
+Examples (source ROS 2 first and use `ROS_DOMAIN_ID=42`):
+
+```bash
+ros2 service call /camera/capture/health std_srvs/srv/Trigger '{}'
+ros2 service call /camera/capture/image1 std_srvs/srv/Trigger '{}'
+ros2 service call /camera/capture/image2 std_srvs/srv/Trigger '{}'
+ros2 service call /camera/capture/video1_start std_srvs/srv/Trigger '{}'
+ros2 service call /camera/capture/video1_stop std_srvs/srv/Trigger '{}'
+ros2 service call /camera/capture/video2_start std_srvs/srv/Trigger '{}'
+ros2 service call /camera/capture/video2_stop std_srvs/srv/Trigger '{}'
+```
+
+Subscribe with `ros2 topic echo /camera/capture/health` **before** calling
+`health`. Each call publishes one `std_msgs/msg/String` message with a UTC
+timestamp, overall health, per-camera availability/freshness, recording state
+and recording errors. The same JSON is returned in the service response.
+The response's `success` means the message was published; inspect JSON
+`healthy` for camera health. The unused second belly slot does not make health
+fail. Health publication is on request.
+
+Images use JPEG quality 90 (`CP_CAPTURE_JPEG_QUALITY`, 0–100). Videos use MPEG-4
+Part 2 compression (`mp4v`) in `.mp4` files at 25 FPS
+(`CP_CAPTURE_VIDEO_FPS`, positive). Both save at the published resolution.
+Recording samples the latest frame at that rate, repeating it if capture is
+slower. Frames older than 3 seconds are rejected. A stalled camera, changed
+resolution or encoding exception stops and finalizes that recording and reports
+the reason in health/logs. A recovered camera can be started again.
+Starting an active recording or stopping an inactive one returns a warning.
+Stereo recordings operate independently; graceful shutdown finalizes all MP4s.
+Abrupt power loss or `SIGKILL` can leave an MP4 unfinished.
+
+Files are stored under `CP_CAPTURE_DIRECTORY` (default `/workspace/captures`),
+in `belly/`, `left/` or `right/` subdirectories, for example:
+
+```text
+/workspace/captures/left/image_20261015T140000_123456Z_a1b2c3d4.jpeg
+/workspace/captures/right/video_20261015T140001_123456Z_e5f6a7b8.mp4
+```
+
+Names contain UTC date/time with microseconds and a random suffix to avoid
+overwriting files. The Dockerfile declares `/workspace/captures` as a volume.
+Compose mounts the named `camera-captures` volume for both deployment modes.
+Files survive restarts, rebuilds and `docker compose down`; **`docker compose
+down -v` deletes the volume and captures**. Copy files to the host with:
+
+```bash
+docker cp cameras-publisher:/workspace/captures ./saved-captures
+```
+
+Compose uses `CP_CAPTURE_DIRECTORY` from `.env` for the capture volume's target
+as well. For a host folder instead, replace the capture mount in Compose with
+`./captures:${CP_CAPTURE_DIRECTORY:-/workspace/captures}`. Non-Docker runs need a writable directory, e.g.
+`CP_CAPTURE_DIRECTORY=./captures python3 publish_cameras.py`, and the ROS
+`std_srvs`/`std_msgs` packages (included by the Dockerfile).
+
+Run API state and adapter tests without cameras, ROS or OpenCV:
+`python3 -m unittest -v test_camera_api`. Validate actual capture and MP4
+playback on the Jetson after rebuilding the image.
+
+### HTTP API and OpenAPI
+
+HTTP is enabled alongside ROS by default. It uses the same camera mapping,
+recording state and persistent storage. Its commands are queued onto the ROS
+executor and serialized with ROS service callbacks and recording timers. An
+HTTP start followed by a ROS stop operates on the same recording.
+
+Settings in `.env`:
+
+```dotenv
+CP_HTTP_API_ENABLED=1
+CP_HTTP_API_HOST=0.0.0.0
+CP_HTTP_API_PORT=8000
+CP_HTTP_API_TIMEOUT=10
+```
+
+With Compose's host networking, HTTP listens directly on the Jetson's port;
+no Docker port mapping is needed. Swagger UI is at `http://JETSON_IP:8000/docs`,
+ReDoc at `/redoc`, and the OpenAPI JSON at `/openapi.json`.
+The API has no authentication and is reachable on the configured bind address.
+Set `CP_HTTP_API_HOST=127.0.0.1` for local access only, or
+`CP_HTTP_API_ENABLED=0` to retain only ROS services.
+
+All seven commands are `POST` requests without a body:
+
+```bash
+curl -X POST http://JETSON_IP:8000/api/health
+curl -X POST http://JETSON_IP:8000/api/image1
+curl -X POST http://JETSON_IP:8000/api/image2
+curl -X POST http://JETSON_IP:8000/api/video1_start
+curl -X POST http://JETSON_IP:8000/api/video1_stop
+curl -X POST http://JETSON_IP:8000/api/video2_start
+curl -X POST http://JETSON_IP:8000/api/video2_stop
+```
+
+Responses have `success` and `message`; health also includes a structured
+`health` object and publishes the ROS health message. An unhealthy camera
+report still returns HTTP 200 if the health command completed; inspect
+`health.healthy`. Capture commands save to disk and return the path, not the
+file contents. Downloads/streaming are not exposed.
+
+| HTTP status | Meaning |
+|---|---|
+| 200 | Command completed |
+| 404 | Requested camera is unavailable |
+| 409 | Already recording, not recording, or no fresh frame |
+| 500 | Capture/encoder/storage failure |
+| 503 | Command queue full or shutting down |
+| 504 | Command execution exceeded `CP_HTTP_API_TIMEOUT` seconds |
+
+Timed-out commands that have not started are cancelled. If execution has
+already started, the response says the outcome is unknown; check health
+before retrying. Shutdown rejects queued commands, stops HTTP, then finalizes
+recordings. Port conflicts fail HTTP startup visibly in the module log.
+
+Run HTTP/OpenAPI, concurrency, dual-server and real JPEG/MP4 tests after
+installing development requirements:
+`python3 -m unittest -v test_camera_api test_camera_http`. These tests simulate
+camera frames and the ROS executor; Jetson hardware and real DDS still need
+deployment validation.
+
+### Separate belly and stereo modules at the same time
+
+Use the standalone dual-instance Compose file. When switching from the single
+module deployment, stop that deployment first to release its camera devices
+and HTTP port. Do not use `-v`, which would delete saved captures.
+
+```bash
+docker compose down
+docker compose -f docker-compose.dual.yml up -d --build
+docker compose -f docker-compose.dual.yml logs -f
+```
+
+| Module | Cameras | HTTP / Swagger | ROS capture namespace | ROS node |
+|---|---|---|---|---|
+| Belly | Belly only | `http://JETSON_IP:8000/docs` | `/camera/belly/capture` | `cameras_publisher_belly` |
+| Stereo | Left and right only | `http://JETSON_IP:8001/docs` | `/camera/stereo/capture` | `cameras_publisher_stereo` |
+
+Both HTTP APIs and both ROS APIs run simultaneously. Each module owns its
+cameras and recording state. For example, `POST :8000/api/video1_start`
+records belly; `POST :8001/api/video1_start` records left independently.
+ROS equivalents are `/camera/belly/capture/video1_start` and
+`/camera/stereo/capture/video1_start`.
+
+The dual file fixes camera selection and API mode per service. Both use the
+same `ROS_DOMAIN_ID` and named capture volume, with files separated into
+`belly/`, `left/` and `right/`; logs are in `logs/belly/` and `logs/stereo/`.
+Each container restarts independently. Configure distinct ports and ROS
+namespaces in `.env`:
+
+```dotenv
+CP_BELLY_HTTP_API_PORT=8000
+CP_STEREO_HTTP_API_PORT=8001
+CP_BELLY_CAPTURE_API_NAMESPACE=/camera/belly/capture
+CP_STEREO_CAPTURE_API_NAMESPACE=/camera/stereo/capture
+```
+
+Apply changes with `docker compose -f docker-compose.dual.yml up -d`.
+For independently launched instances outside this dual file, assign each
+instance its own `CP_HTTP_API_PORT`, `CP_CAPTURE_API_NAMESPACE` and
+`CP_NODE_NAME`, as well as the correct camera selection/mode.
+
 ## Settings
-- `ROS_DOMAIN_ID` (default **42**) must be the same for every SWARMER module and for PX4's uXRCE-DDS agent: it is fixed to 42 in `docker-compose.yml` (a `ROS_DOMAIN_ID` in your shell does not change it); set PX4's `UXRCE_DDS_DOM_ID` to 42 too. The RMW is Cyclone DDS.
-- Almost every setting of `config.py` can be changed in `docker-compose.yml` as `CP_<NAME>`: the prefix `CP_` (= this module's `config.py`; visual odometry uses `VO_`, obstacle detection `OD_`) added to the setting's name, e.g. `BELLY_CAMERA_EXPOSURE` becomes `CP_BELLY_CAMERA_EXPOSURE`. Then run `docker compose up -d` (no rebuild). The exceptions are fixed values such as `BELLY_CAMERA_DISTORTION_COEFFS`; the ROS domain is the plain variable `ROS_DOMAIN_ID`.
-- **Belly lens calibration** (once per camera, checkerboard at 640x400): `fx`, `fy`, `cx`, `cy` as `CP_BELLY_CAMERA_FX/FY/CX/CY` in `docker-compose.yml` (then `docker compose up -d`); the 5 distortion coefficients as `BELLY_CAMERA_DISTORTION_COEFFS` in `config.py` (then `docker compose up -d --build`), they cannot be set with a `CP_` variable. Uncalibrated, the visual odometry has a scale error of about 8 %.
+- `ROS_DOMAIN_ID` (default **42** in `.env`) must be the same for every SWARMER module and for PX4's uXRCE-DDS agent; set PX4's `UXRCE_DDS_DOM_ID` to match. The RMW is Cyclone DDS.
+- Almost every setting of `config.py` can be changed in `.env` as `CP_<NAME>`: the prefix `CP_` (= this module's `config.py`; visual odometry uses `VO_`, obstacle detection `OD_`) added to the setting's name, e.g. `CP_BELLY_CAMERA_EXPOSURE=30`. Then run `docker compose up -d` (no rebuild). The exceptions are fixed values such as `BELLY_CAMERA_DISTORTION_COEFFS`; the ROS domain is the plain variable `ROS_DOMAIN_ID`.
+- **Belly lens calibration** (once per camera, checkerboard at 640x400): `fx`, `fy`, `cx`, `cy` as `CP_BELLY_CAMERA_FX/FY/CX/CY` in `.env` (then `docker compose up -d`); the 5 distortion coefficients as `BELLY_CAMERA_DISTORTION_COEFFS` in `config.py` (then `docker compose up -d --build`), they cannot be set with a `CP_` variable. Uncalibrated, the visual odometry has a scale error of about 8 %.
 - Measure and set the mounts: `CP_BELLY_CAMERA_MOUNT_*_DEG`, `CP_BELLY_CAMERA_T*_M` (offset from the IMU) and `CP_STEREO_CAMERA_BASELINE_CMS` (6 cm).
 - Fixed belly exposure (less motion blur): `CP_BELLY_CAMERA_EXPOSURE: "30"` (100 µs units; default auto).
 

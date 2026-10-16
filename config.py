@@ -333,5 +333,18 @@ TOPIC_CAMERA_BELLY_COMPRESSED = _env_str('TOPIC_CAMERA_BELLY_COMPRESSED', '/came
 TOPIC_CAMERA_BELLY_INFO = _env_str('TOPIC_CAMERA_BELLY_INFO', '/camera/belly/camera_info')
 
 
+# Capture API: ROS Trigger services under this namespace. In auto mode the
+# configured stereo stream takes precedence, even if a stereo camera is missing.
+CAPTURE_API_NAMESPACE = _env_str('CAPTURE_API_NAMESPACE', '/camera/capture')
+CAPTURE_API_MODE = _env_str('CAPTURE_API_MODE', 'auto', choices=('auto', 'belly', 'stereo'))
+CAPTURE_DIRECTORY = _env_str('CAPTURE_DIRECTORY', '/workspace/captures')
+CAPTURE_JPEG_QUALITY = _env_int('CAPTURE_JPEG_QUALITY', 90)
+CAPTURE_VIDEO_FPS = _env_float('CAPTURE_VIDEO_FPS', 25.0)
+NODE_NAME = _env_str('NODE_NAME', 'cameras_publisher')
+HTTP_API_ENABLED = _env_bool('HTTP_API_ENABLED', True)
+HTTP_API_HOST = _env_str('HTTP_API_HOST', '0.0.0.0')
+HTTP_API_PORT = _env_int('HTTP_API_PORT', 8000)
+HTTP_API_TIMEOUT = _env_float('HTTP_API_TIMEOUT', 10.0)
+
 # Last environment-overridable parameter is above: report what this run changed.
 _env_report()

@@ -9,6 +9,9 @@ One ROS 2 node, `publish_cameras.py`, that opens the drone's cameras on the Jets
 
 It is the only code that touches a camera. Every other module reads these topics.
 
+The [capture API](README_SWARMER.md#capture-api-save-images-and-videos) provides ROS 2 services and HTTP/OpenAPI endpoints for health, JPEG snapshots and independent MP4 recordings, with persistent Docker storage. Swagger UI is on port 8000 at `/docs` by default.
+Use `docker-compose.dual.yml` to run separate belly/stereo modules with simultaneous APIs on ports 8000 and 8001.
+
 ## Topics
 
 | Topic | Type | Stream |

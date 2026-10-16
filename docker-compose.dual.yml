@@ -1,0 +1,48 @@
+# Run one module per camera rig, each with its own HTTP and ROS capture API:
+# docker compose -f docker-compose.dual.yml up -d --build
+x-camera-module: &camera-module
+  image: cameras-publisher:latest
+  build: .
+  runtime: nvidia
+  network_mode: host
+  privileged: true
+  restart: unless-stopped
+  stop_signal: SIGINT
+  env_file:
+    - .env
+  command: python3 publish_cameras.py
+
+services:
+  cameras-publisher-belly:
+    <<: *camera-module
+    container_name: cameras-publisher-belly
+    environment:
+      CP_NODE_NAME: cameras_publisher_belly
+      CP_BELLY_CAMERA_ENABLED: "1"
+      CP_STEREO_CAMERA_ENABLED: "0"
+      CP_CAPTURE_API_MODE: belly
+      CP_CAPTURE_API_NAMESPACE: ${CP_BELLY_CAPTURE_API_NAMESPACE:-/camera/belly/capture}
+      CP_HTTP_API_PORT: ${CP_BELLY_HTTP_API_PORT:-8000}
+      CP_CAPTURE_DIRECTORY: ${CP_CAPTURE_DIRECTORY:-/workspace/captures}
+    volumes:
+      - ./logs/belly:/workspace/logs
+      - camera-captures:${CP_CAPTURE_DIRECTORY:-/workspace/captures}
+
+  cameras-publisher-stereo:
+    <<: *camera-module
+    container_name: cameras-publisher-stereo
+    environment:
+      CP_NODE_NAME: cameras_publisher_stereo
+      CP_BELLY_CAMERA_ENABLED: "0"
+      CP_STEREO_CAMERA_ENABLED: "1"
+      CP_CAPTURE_API_MODE: stereo
+      CP_CAPTURE_API_NAMESPACE: ${CP_STEREO_CAPTURE_API_NAMESPACE:-/camera/stereo/capture}
+      CP_HTTP_API_PORT: ${CP_STEREO_HTTP_API_PORT:-8001}
+      CP_CAPTURE_DIRECTORY: ${CP_CAPTURE_DIRECTORY:-/workspace/captures}
+    volumes:
+      - /tmp/argus_socket:/tmp/argus_socket
+      - ./logs/stereo:/workspace/logs
+      - camera-captures:${CP_CAPTURE_DIRECTORY:-/workspace/captures}
+
+volumes:
+  camera-captures:

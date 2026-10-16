@@ -6,4 +6,7 @@
 numpy==1.26.4               # ROS 2 Jazzy is built against NumPy 1.x
 scipy==1.15.0               # scipy.spatial.transform.Rotation (tf of the cameras)
 PyYAML==6.0.1               # write_calibration_yaml.py
+fastapi==0.143.2            # HTTP capture API and OpenAPI schema
+uvicorn==0.54.0             # HTTP server (one embedded server, shared camera state)
+httpx==0.28.1               # [dev-pc] HTTP API integration tests
 opencv-python==4.11.0.86    # [dev-pc] the image uses Ubuntu's python3-opencv instead: it has GStreamer (CSI cameras)

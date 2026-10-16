@@ -65,6 +65,7 @@ from builtin_interfaces.msg import Time as TimeMsg
 from utils_camera_source import (_build_capture, belly_camera_intrinsics, device_path,
                                  find_belly_capture, fill_camera_info, grab_ok, v4l2_name)
 from utils_log import setup_logger, LOG_DIR
+from utils_camera_api import CameraCaptureAPI
 
 log = setup_logger('publish_cameras')
 
@@ -516,7 +517,7 @@ class _StreamStats:
 
 class CameraPublisher(Node):
     def __init__(self, stereo_source=None, belly_source=None):
-        super().__init__('cameras_publisher')
+        super().__init__(config.NODE_NAME)
         self.bridge = CvBridge()
         self.stereo_source = stereo_source
         self.belly_source = belly_source
@@ -576,6 +577,7 @@ class CameraPublisher(Node):
                      f"every {config.TOPIC_PUBLISHER_TIMER_BELLY_CAMERA}s.")
 
         self.create_timer(WATCHDOG_PERIOD_S, self._watchdog)
+        self.capture_api = CameraCaptureAPI(self, stereo_source, belly_source, config)
 
     def _to_msg(self, frame, stamp, frame_id):
         if self.msg_type is CompressedImage:
@@ -800,12 +802,17 @@ def main():
     for source in sources:
         source.start()
     try:
+        node.capture_api.start_http()
         rclpy.spin(node)
     except (KeyboardInterrupt, ExternalShutdownException):
         log.info("Shutdown requested.")
     except Exception:
         log.exception("Spin loop crashed")
     finally:
+        try:
+            node.capture_api.close()
+        except Exception:
+            log.exception("Error finalizing camera recordings")
         for source in sources:
             try:
                 source.stop()

@@ -1,6 +1,8 @@
 __pycache__/
 *.pyc
 logs/
+captures/
+saved-captures/
 calibration.yaml
 .vscode/
 # Python venv (setup/install_requirements.sh --venv cameras_env)

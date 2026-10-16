@@ -19,6 +19,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ros-jazzy-rmw-cyclonedds-cpp \
+        ros-jazzy-std-srvs ros-jazzy-std-msgs \
         python3-pip \
         python3-opencv \
         gstreamer1.0-tools gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
@@ -35,5 +36,8 @@ RUN setup/install_requirements.sh --docker
 # Application code. Logs go to /workspace/logs: mount a host folder there.
 COPY config.py utils_*.py publish_cameras.py write_calibration_yaml.py test_stereo_camera.py ./
 COPY patch/ ./patch/
+
+RUN mkdir -p /workspace/captures
+VOLUME ["/workspace/captures"]
 
 CMD ["bash"]
