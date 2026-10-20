@@ -9,7 +9,7 @@ One ROS 2 node, `publish_cameras.py`, that opens the drone's cameras on the Jets
 
 It is the only code that touches a camera. Every other module reads these topics.
 
-The [capture API](README_SWARMER.md#capture-api-save-images-and-videos) provides ROS 2 services and HTTP/OpenAPI endpoints for health, JPEG snapshots and independent MP4 recordings, with persistent Docker storage. Swagger UI is on port 8000 at `/docs` by default.
+The [capture API](README_SWARMER.md#capture-api-save-images-and-videos) provides ROS 2 services and HTTP/OpenAPI endpoints for health, JPEG snapshots and independent MP4 recordings, with persistent Docker storage. ROS and HTTP endpoints select camera 1 or 2; requests contain only a capture `name` (use `default` explicitly); multiple modules can record the same camera simultaneously and stop their own named video. See [named ROS captures](README_SWARMER.md#named-ros-captures-per-module) for interface setup and examples. Swagger UI is on port 8000 at `/docs` by default.
 Use `docker-compose.dual.yml` to run separate belly/stereo modules with simultaneous APIs on ports 8000 and 8001.
 
 ## Topics
@@ -68,6 +68,8 @@ Pass the belly camera's `/dev/videoN` with `--device` (the server also tries the
 ```bash
 setup/install_requirements.sh --venv cameras_env      # once: venv from requirements.txt
 source /opt/ros/jazzy/setup.bash && source cameras_env/bin/activate
+# Build the capture interface first (README_SWARMER.md); source it in each shell.
+source install/ros_interfaces/setup.bash
 python3 publish_cameras.py --no-stereo --belly /dev/video0
 ```
 `requirements.txt` is the only list of Python packages; the image installs the same file (except the `[dev-pc]` lines).

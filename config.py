@@ -333,8 +333,9 @@ TOPIC_CAMERA_BELLY_COMPRESSED = _env_str('TOPIC_CAMERA_BELLY_COMPRESSED', '/came
 TOPIC_CAMERA_BELLY_INFO = _env_str('TOPIC_CAMERA_BELLY_INFO', '/camera/belly/camera_info')
 
 
-# Capture API: ROS Trigger services under this namespace. In auto mode the
+# Capture API: name-only ROS services under this namespace. In auto mode the
 # configured stereo stream takes precedence, even if a stereo camera is missing.
+# This mode selects the camera mapping for both ROS services and HTTP endpoints.
 CAPTURE_API_NAMESPACE = _env_str('CAPTURE_API_NAMESPACE', '/camera/capture')
 CAPTURE_API_MODE = _env_str('CAPTURE_API_MODE', 'auto', choices=('auto', 'belly', 'stereo'))
 CAPTURE_DIRECTORY = _env_str('CAPTURE_DIRECTORY', '/workspace/captures')

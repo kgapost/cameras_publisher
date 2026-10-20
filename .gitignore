@@ -9,3 +9,7 @@ calibration.yaml
 cameras_env/
 venv/
 .venv/
+# Local colcon interface builds.
+/build/
+/install/
+/log/

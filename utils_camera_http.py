@@ -23,13 +23,13 @@ class CommandQueue:
         self.closed = False
         self.wake = lambda: None
 
-    def submit(self, name):
+    def submit(self, action, **parameters):
         future = Future()
         with self.lock:
             if self.closed:
                 raise APIUnavailable('Camera API is shutting down')
             try:
-                self.pending.put_nowait((name, future))
+                self.pending.put_nowait((action, parameters, future))
             except Full:
                 raise APIUnavailable('Camera command queue is full') from None
             self.wake()
@@ -42,14 +42,14 @@ class CommandQueue:
                 if self.closed:
                     return
                 try:
-                    name, future = self.pending.get_nowait()
+                    action, parameters, future = self.pending.get_nowait()
                 except Empty:
                     return
                 running = future.set_running_or_notify_cancel()
             if not running:
                 continue
             try:
-                future.set_result(self.execute(name))
+                future.set_result(self.execute(action, **parameters))
             except Exception as exc:
                 future.set_exception(exc)
         with self.lock:
@@ -61,7 +61,7 @@ class CommandQueue:
             self.closed = True
             while True:
                 try:
-                    _, future = self.pending.get_nowait()
+                    _, _, future = self.pending.get_nowait()
                 except Empty:
                     break
                 if future.set_running_or_notify_cancel():
@@ -70,7 +70,7 @@ class CommandQueue:
 
 def create_app(commands, timeout=10.0):
     from fastapi import FastAPI, Response
-    from pydantic import BaseModel
+    from pydantic import BaseModel, Field
 
     if not math.isfinite(timeout) or timeout <= 0:
         raise ValueError('HTTP_API_TIMEOUT must be finite and positive')
@@ -82,54 +82,68 @@ def create_app(commands, timeout=10.0):
         message: str
         recording: bool
         recording_error: str | None = None
+        recordings: dict[str, str]
+        recording_errors: dict[str, str]
 
     class HealthReport(BaseModel):
         healthy: bool
         timestamp: str
         cameras: dict[str, CameraHealth]
 
+    class CaptureName(BaseModel):
+        model_config = {'extra': 'forbid'}
+        name: str = Field(min_length=1, max_length=64,
+                          pattern=r'^[A-Za-z0-9][A-Za-z0-9_.-]*$',
+                          description='Recording ID / snapshot filename prefix. Use the same name '
+                                      'to stop a recording; names are scoped to each camera.')
+
     class CaptureResponse(BaseModel):
         success: bool
         message: str
         health: HealthReport | None = None
 
-    app = FastAPI(title='Camera Capture API', version='1.0.0',
+    app = FastAPI(title='Camera Capture API', version='2.0.0',
                   description='Shared ROS 2/HTTP camera snapshots, recordings and health. '
-                              'Camera 1 is belly or left; camera 2 is absent or right, '
-                              'according to the configured capture mode.')
+                              'The endpoint selects camera 1 (belly or left) or camera 2 (right). '
+                              'Requests contain only name; pass default for a default capture. '
+                              'Multiple names can record the same camera independently. '
+                              'Health accepts the same request and ignores the name.')
 
-    def endpoint(name):
-        async def run(response: Response):
-            future = None
-            try:
-                future = commands.submit(name)
-                result, status = await asyncio.wait_for(
-                    asyncio.shield(asyncio.wrap_future(future)), timeout=timeout)
-            except APIUnavailable as exc:
-                result, status = dict(success=False, message=str(exc)), 503
-            except TimeoutError:
-                cancelled = future.cancel()
-                message = ('Command timed out before execution; it was cancelled' if cancelled else
-                           'Command timed out during execution; outcome unknown. Check health before retrying')
-                result, status = dict(success=False, message=message), 504
-            except asyncio.CancelledError:
-                if future is not None:
-                    future.cancel()
-                raise
-            except Exception:
-                result, status = dict(success=False, message='Camera command failed'), 500
-            response.status_code = status
-            return result
-        return run
+    async def run(action, response, parameters):
+        future = None
+        try:
+            future = commands.submit(action, **parameters)
+            result, status = await asyncio.wait_for(
+                asyncio.shield(asyncio.wrap_future(future)), timeout=timeout)
+        except APIUnavailable as exc:
+            result, status = dict(success=False, message=str(exc)), 503
+        except TimeoutError:
+            cancelled = future.cancel()
+            message = ('Command timed out before execution; it was cancelled' if cancelled else
+                       'Command timed out during execution; outcome unknown. Check health before retrying')
+            result, status = dict(success=False, message=message), 504
+        except asyncio.CancelledError:
+            if future is not None:
+                future.cancel()
+            raise
+        except Exception:
+            result, status = dict(success=False, message='Camera command failed'), 500
+        response.status_code = status
+        return result
+
+    def endpoint(action):
+        async def named(response: Response, capture: CaptureName):
+            return await run(action, response, capture.model_dump())
+        return named
 
     descriptions = {
-        'health': 'Publish a ROS health message and return the same health report as JSON.',
+        'health': 'Publish and return camera health; the supplied name is ignored.',
         'image1': 'Save a JPEG from camera 1 (belly or left).',
         'image2': 'Save a JPEG from camera 2 (right); warn when no second camera exists.',
-        'video1_start': 'Start an MP4 for camera 1; warn if already recording.',
-        'video1_stop': 'Finalize camera 1 MP4; warn if not recording.',
-        'video2_start': 'Start an MP4 for camera 2; warn if absent or already recording.',
-        'video2_stop': 'Finalize camera 2 MP4; warn if absent or not recording.',
+        'video1_start': 'Start camera 1 MP4 with the supplied recording name.',
+        'video1_stop': 'Finalize only camera 1 MP4 with the supplied recording name.',
+        'video2_start': 'Start camera 2 MP4 with the supplied recording name.',
+        'video2_stop': 'Finalize only camera 2 MP4 with the supplied recording name.',
     }
     errors = {code: dict(model=CaptureResponse, description=description) for code, description in (
         (404, 'Camera unavailable'), (409, 'Recording state conflict or no fresh frame'),

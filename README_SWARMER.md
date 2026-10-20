@@ -59,94 +59,168 @@ Publishes only; subscribes to nothing. QoS: reliable, volatile, depth 10.
 
 ## Capture API (save images and videos)
 
-Seven ROS 2 services of type `std_srvs/srv/Trigger` are available under
-`/camera/capture`. Responses contain `success` and a `message` with the saved path, recording state or warning. Warnings return `success: false`, appear in the node log, and do not create files or change other recordings.
+ROS 2 and HTTP expose the same seven commands. The endpoint selects the camera;
+every request contains only `name`. Use a distinct name per module or recording
+session, or pass `default` explicitly for a default capture.
 
-| Service suffix | Belly mode | Stereo mode |
+| Command suffix | Belly mode | Stereo mode |
 |---|---|---|
-| `health` | Publish health JSON | Publish health JSON |
+| `health` | Publish/return health JSON | Publish/return health JSON |
 | `image1` | Save belly JPEG | Save left JPEG |
 | `image2` | Warn: no camera | Save right JPEG |
-| `video1_start` | Start belly MP4 | Start left MP4 |
-| `video1_stop` | Finalize belly MP4 | Finalize left MP4 |
-| `video2_start` | Warn: no camera | Start right MP4 |
-| `video2_stop` | Warn: no camera | Finalize right MP4 |
+| `video1_start` | Start named belly MP4 | Start named left MP4 |
+| `video2_start` | Warn: no camera | Start named right MP4 |
+| `video1_stop` | Finalize named belly MP4 | Finalize named left MP4 |
+| `video2_stop` | Warn: no camera | Finalize named right MP4 |
 
-`CP_CAPTURE_API_MODE` defaults to `auto`: stereo mapping when
-`STEREO_CAMERA_ENABLED` is enabled (including `--stereo`), belly mapping
-otherwise.
-Set it to `belly` or `stereo` to select explicitly when publishing both streams.
-A missing stereo camera keeps its left/right slot; it is never replaced by belly.
-Stereo-only deployment uses `--stereo --no-belly`.
-Separate instances on the same ROS domain should use different `CP_CAPTURE_API_NAMESPACE` values to avoid duplicate service names.
+ROS service names are `/camera/capture/<suffix>`; HTTP paths are `/api/<suffix>`.
+The ROS namespace is configurable with `CP_CAPTURE_API_NAMESPACE`.
+`CP_CAPTURE_API_MODE=auto` selects stereo mapping when `STEREO_CAMERA_ENABLED`
+is enabled (including `--stereo`), belly mapping otherwise. Set it to `belly` or
+`stereo` explicitly when publishing both streams. A missing stereo camera keeps
+its left/right slot; it is never replaced by belly. To access belly and stereo
+capture APIs simultaneously, use the separate instances described below.
 
-Examples (source ROS 2 first and use `ROS_DOMAIN_ID=42`):
+Each camera/recording-name pair controls its own MP4. Multiple modules can
+record the same camera at the same time using different names. Stopping one
+name leaves the others recording; an unknown name never falls back to another
+recording. The same name may be used independently on camera 1 and camera 2.
+Reusing a name after stopping creates a new file.
 
-```bash
-ros2 service call /camera/capture/health std_srvs/srv/Trigger '{}'
-ros2 service call /camera/capture/image1 std_srvs/srv/Trigger '{}'
-ros2 service call /camera/capture/image2 std_srvs/srv/Trigger '{}'
-ros2 service call /camera/capture/video1_start std_srvs/srv/Trigger '{}'
-ros2 service call /camera/capture/video1_stop std_srvs/srv/Trigger '{}'
-ros2 service call /camera/capture/video2_start std_srvs/srv/Trigger '{}'
-ros2 service call /camera/capture/video2_stop std_srvs/srv/Trigger '{}'
-```
+### Named ROS captures (per module)
 
-Subscribe with `ros2 topic echo /camera/capture/health` **before** calling
-`health`. Each call publishes one `std_msgs/msg/String` message with a UTC
-timestamp, overall health, per-camera availability/freshness, recording state
-and recording errors. The same JSON is returned in the service response.
-The response's `success` means the message was published; inspect JSON
-`healthy` for camera health. The unused second belly slot does not make health
-fail. Health publication is on request.
-
-Images use JPEG quality 90 (`CP_CAPTURE_JPEG_QUALITY`, 0–100). Videos use MPEG-4
-Part 2 compression (`mp4v`) in `.mp4` files at 25 FPS
-(`CP_CAPTURE_VIDEO_FPS`, positive). Both save at the published resolution.
-Recording samples the latest frame at that rate, repeating it if capture is
-slower. Frames older than 3 seconds are rejected. A stalled camera, changed
-resolution or encoding exception stops and finalizes that recording and reports
-the reason in health/logs. A recovered camera can be started again.
-Starting an active recording or stopping an inactive one returns a warning.
-Stereo recordings operate independently; graceful shutdown finalizes all MP4s.
-Abrupt power loss or `SIGKILL` can leave an MP4 unfinished.
-
-Files are stored under `CP_CAPTURE_DIRECTORY` (default `/workspace/captures`),
-in `belly/`, `left/` or `right/` subdirectories, for example:
+All seven services, including `health`, use
+`camera_capture_interfaces/srv/Capture`:
 
 ```text
-/workspace/captures/left/image_20261015T140000_123456Z_a1b2c3d4.jpeg
-/workspace/captures/right/video_20261015T140001_123456Z_e5f6a7b8.mp4
+string name
+---
+bool success
+string message
 ```
 
-Names contain UTC date/time with microseconds and a random suffix to avoid
-overwriting files. The Dockerfile declares `/workspace/captures` as a volume.
-Compose mounts the named `camera-captures` volume for both deployment modes.
-Files survive restarts, rebuilds and `docker compose down`; **`docker compose
-down -v` deletes the volume and captures**. Copy files to the host with:
+The endpoint supplies the camera, so there is no `camera` request field.
+Pass `{name: default}` for health; health validates but otherwise ignores the
+name. Empty/invalid names, unavailable cameras, duplicate starts and unknown
+stops return `success: false` with the reason in `message`. Successful capture
+responses include the saved path or recording state.
+
+Rebuild the Docker image for the updated interface and services:
 
 ```bash
-docker cp cameras-publisher:/workspace/captures ./saved-captures
+docker compose up -d --build
 ```
 
-Compose uses `CP_CAPTURE_DIRECTORY` from `.env` for the capture volume's target
-as well. For a host folder instead, replace the capture mount in Compose with
-`./captures:${CP_CAPTURE_DIRECTORY:-/workspace/captures}`. Non-Docker runs need a writable directory, e.g.
-`CP_CAPTURE_DIRECTORY=./captures python3 publish_cameras.py`, and the ROS
-`std_srvs`/`std_msgs` packages (included by the Dockerfile).
+The image builds the interface, and its entrypoint automatically sources ROS
+Jazzy and the installed interface. For an interactive CLI inside the container,
+open a shell and source it explicitly (`docker exec` bypasses the entrypoint):
 
-Run API state and adapter tests without cameras, ROS or OpenCV:
-`python3 -m unittest -v test_camera_api`. Validate actual capture and MP4
-playback on the Jetson after rebuilding the image.
+```bash
+docker exec -it cameras-publisher bash
+source /opt/camera_capture_ws/install/setup.bash
+export ROS_DOMAIN_ID=42
+```
+
+Examples for two modules sharing camera 1:
+
+```bash
+ros2 service call /camera/capture/health camera_capture_interfaces/srv/Capture '{name: default}'
+ros2 service call /camera/capture/image1 camera_capture_interfaces/srv/Capture '{name: inspection.snapshot}'
+ros2 service call /camera/capture/image2 camera_capture_interfaces/srv/Capture '{name: inspection.snapshot}'
+
+ros2 service call /camera/capture/video1_start camera_capture_interfaces/srv/Capture '{name: odometry}'
+ros2 service call /camera/capture/video1_start camera_capture_interfaces/srv/Capture '{name: inspection}'
+# Stop only odometry; inspection continues recording.
+ros2 service call /camera/capture/video1_stop camera_capture_interfaces/srv/Capture '{name: odometry}'
+ros2 service call /camera/capture/video1_stop camera_capture_interfaces/srv/Capture '{name: inspection}'
+
+# Camera 2 is independent (available in stereo mode).
+ros2 service call /camera/capture/video2_start camera_capture_interfaces/srv/Capture '{name: inspection}'
+ros2 service call /camera/capture/video2_stop camera_capture_interfaces/srv/Capture '{name: inspection}'
+
+# A default capture uses the same services with an explicit name.
+ros2 service call /camera/capture/video1_start camera_capture_interfaces/srv/Capture '{name: default}'
+ros2 service call /camera/capture/video1_stop camera_capture_interfaces/srv/Capture '{name: default}'
+```
+
+On a host/client machine, or when running the publisher without Docker, build
+the interface from this repository root and source it before starting the node
+or client. Rebuild both publisher and clients after updating the service definition.
+Build tools are needed once:
+
+```bash
+sudo apt-get install build-essential python3-colcon-common-extensions ros-jazzy-rosidl-default-generators
+source /opt/ros/jazzy/setup.bash
+colcon build --base-paths ros_interfaces \
+  --build-base build/ros_interfaces --install-base install/ros_interfaces --merge-install \
+  --cmake-args -DBUILD_TESTING=OFF -DPython3_EXECUTABLE=/usr/bin/python3
+source install/ros_interfaces/setup.bash
+export ROS_DOMAIN_ID=42
+```
+
+Alternatively, copy `ros_interfaces/camera_capture_interfaces` into the client
+ROS workspace's `src/`, add `camera_capture_interfaces` as a dependency in that
+client's `package.xml`, and build/source that workspace. A Python ROS module
+uses the generated request with its existing node and executor:
+
+```python
+from camera_capture_interfaces.srv import Capture
+
+start_client = node.create_client(Capture, '/camera/capture/video1_start')
+start_client.wait_for_service()
+future = start_client.call_async(Capture.Request(name='odometry'))
+# Let the node's executor run; inspect future.result().success when complete.
+
+# Later, stop the same name and inspect the response before treating it as saved.
+stop_client = node.create_client(Capture, '/camera/capture/video1_stop')
+stop_client.wait_for_service()
+stop_future = stop_client.call_async(Capture.Request(name='odometry'))
+```
+
+For dual deployment, use `/camera/belly/capture` or `/camera/stereo/capture` as
+the namespace. All ROS services remain available with `CP_HTTP_API_ENABLED=0`.
 
 ### HTTP API and OpenAPI
 
-HTTP is enabled alongside ROS by default. It uses the same camera mapping,
-recording state and persistent storage. Its commands are queued onto the ROS
-executor and serialized with ROS service callbacks and recording timers. An
-HTTP start followed by a ROS stop operates on the same recording.
+HTTP exposes only the seven commands in the table above. All are `POST`
+requests with a required JSON body containing only `name`, including health:
 
-Settings in `.env`:
+```json
+{"name": "odometry"}
+```
+
+Use `{"name":"default"}` for a default capture or a health query. Omitting the
+body/name, an invalid name, or extra fields such as `camera` returns HTTP 422.
+The endpoint selects the same camera slot as its ROS equivalent.
+
+```bash
+curl -X POST http://JETSON_IP:8000/api/health \
+  -H 'Content-Type: application/json' -d '{"name":"default"}'
+curl -X POST http://JETSON_IP:8000/api/image1 \
+  -H 'Content-Type: application/json' -d '{"name":"inspection.snapshot"}'
+curl -X POST http://JETSON_IP:8000/api/image2 \
+  -H 'Content-Type: application/json' -d '{"name":"inspection.snapshot"}'
+curl -X POST http://JETSON_IP:8000/api/video1_start \
+  -H 'Content-Type: application/json' -d '{"name":"odometry"}'
+curl -X POST http://JETSON_IP:8000/api/video1_start \
+  -H 'Content-Type: application/json' -d '{"name":"inspection"}'
+# Finalize odometry; inspection keeps recording.
+curl -X POST http://JETSON_IP:8000/api/video1_stop \
+  -H 'Content-Type: application/json' -d '{"name":"odometry"}'
+curl -X POST http://JETSON_IP:8000/api/video1_stop \
+  -H 'Content-Type: application/json' -d '{"name":"inspection"}'
+curl -X POST http://JETSON_IP:8000/api/video2_start \
+  -H 'Content-Type: application/json' -d '{"name":"inspection"}'
+curl -X POST http://JETSON_IP:8000/api/video2_stop \
+  -H 'Content-Type: application/json' -d '{"name":"inspection"}'
+```
+
+HTTP commands run on the ROS executor, serialized with ROS service callbacks
+and recording timers. Both transports share the same recording state and
+storage: a video started with HTTP `video1_start` can be stopped with ROS
+`video1_stop` using the same name, and vice versa.
+
+HTTP is enabled alongside ROS by default. Settings in `.env`:
 
 ```dotenv
 CP_HTTP_API_ENABLED=1
@@ -162,29 +236,18 @@ The API has no authentication and is reachable on the configured bind address.
 Set `CP_HTTP_API_HOST=127.0.0.1` for local access only, or
 `CP_HTTP_API_ENABLED=0` to retain only ROS services.
 
-All seven commands are `POST` requests without a body:
-
-```bash
-curl -X POST http://JETSON_IP:8000/api/health
-curl -X POST http://JETSON_IP:8000/api/image1
-curl -X POST http://JETSON_IP:8000/api/image2
-curl -X POST http://JETSON_IP:8000/api/video1_start
-curl -X POST http://JETSON_IP:8000/api/video1_stop
-curl -X POST http://JETSON_IP:8000/api/video2_start
-curl -X POST http://JETSON_IP:8000/api/video2_stop
-```
-
 Responses have `success` and `message`; health also includes a structured
 `health` object and publishes the ROS health message. An unhealthy camera
 report still returns HTTP 200 if the health command completed; inspect
-`health.healthy`. Capture commands save to disk and return the path, not the
-file contents. Downloads/streaming are not exposed.
+`health.healthy`. Captures save to disk and return the path, not file contents.
+Downloads/streaming are not exposed.
 
 | HTTP status | Meaning |
 |---|---|
 | 200 | Command completed |
-| 404 | Requested camera is unavailable |
-| 409 | Already recording, not recording, or no fresh frame |
+| 404 | Requested camera slot is unavailable |
+| 409 | This camera/name pair is already recording, is not recording, or has no fresh frame |
+| 422 | Invalid/missing capture name or unexpected JSON fields |
 | 500 | Capture/encoder/storage failure |
 | 503 | Command queue full or shutting down |
 | 504 | Command execution exceeded `CP_HTTP_API_TIMEOUT` seconds |
@@ -194,11 +257,64 @@ already started, the response says the outcome is unknown; check health
 before retrying. Shutdown rejects queued commands, stops HTTP, then finalizes
 recordings. Port conflicts fail HTTP startup visibly in the module log.
 
-Run HTTP/OpenAPI, concurrency, dual-server and real JPEG/MP4 tests after
-installing development requirements:
-`python3 -m unittest -v test_camera_api test_camera_http`. These tests simulate
-camera frames and the ROS executor; Jetson hardware and real DDS still need
-deployment validation.
+### Health, encoding and storage
+
+Subscribe with `ros2 topic echo /camera/capture/health` before calling `health`.
+Each call publishes one `std_msgs/msg/String` message containing a UTC timestamp,
+overall health and the numbered `cameras` mapping. Each camera entry includes
+its label, availability/freshness, `recording`, active `recordings` (name-to-path
+mapping), and `recording_errors` (name-to-error mapping). The same JSON is
+returned in the ROS response and HTTP `health` object. `success` means the health
+query completed; inspect `healthy` for camera health. The unused second belly
+slot does not make health fail. Publication is on request.
+
+Images use JPEG quality 90 (`CP_CAPTURE_JPEG_QUALITY`, 0–100). Videos use MPEG-4
+Part 2 compression (`mp4v`) in `.mp4` files at 25 FPS
+(`CP_CAPTURE_VIDEO_FPS`, positive). Both save at the published resolution.
+Recording samples the latest frame at that rate, repeating it if capture is
+slower. Frames older than 3 seconds are rejected. An encoding failure stops
+only the affected recording; a camera stall or resolution change stops all
+recordings using that camera and reports the reason per name in health/logs.
+A recovered camera can be started again. Graceful shutdown finalizes all MP4s;
+abrupt power loss or `SIGKILL` can leave an MP4 unfinished.
+
+Files are stored under `CP_CAPTURE_DIRECTORY` (default `/workspace/captures`),
+in `belly/`, `left/` or `right/` subdirectories, for example:
+
+```text
+/workspace/captures/left/image_20261015T140000_123456Z_a1b2c3d4.jpeg
+/workspace/captures/right/video_20261015T140001_123456Z_e5f6a7b8.mp4
+/workspace/captures/belly/video_odometry_20261015T140002_123456Z_f6a7b8c9.mp4
+```
+
+Filenames contain the supplied capture name (omitted for `default`), UTC
+date/time with microseconds and a random suffix to avoid overwriting files.
+Capture names are case-sensitive, 1–64 characters, start with an ASCII letter
+or digit, and contain only ASCII letters, digits, dots, dashes or underscores.
+They are IDs/prefixes; the server supplies the extension and storage directory.
+
+The Dockerfile declares `/workspace/captures` as a volume. Compose mounts the
+named `camera-captures` volume for both deployment modes. Files survive restarts,
+rebuilds and `docker compose down`; **`docker compose down -v` deletes the volume
+and captures**. Copy files to the host with:
+
+```bash
+docker cp cameras-publisher:/workspace/captures ./saved-captures
+```
+
+Compose uses `CP_CAPTURE_DIRECTORY` from `.env` as the capture volume's target.
+For a host folder, replace the mount with
+`./captures:${CP_CAPTURE_DIRECTORY:-/workspace/captures}`. Non-Docker runs need
+a writable directory, e.g. `CP_CAPTURE_DIRECTORY=./captures`, ROS `std_msgs`, and
+the built `camera_capture_interfaces` overlay (build/source instructions above).
+
+Run state/adapter tests without cameras, ROS or OpenCV:
+`python3 -m unittest -v test_camera_api`. With development requirements installed,
+run `python3 -m unittest -v test_camera_api test_camera_http` for HTTP/OpenAPI,
+concurrency, dual-server and real JPEG/MP4 tests. To exercise real ROS service
+serialization/discovery/callbacks using synthetic frames, source ROS and the
+interface overlay, then run `python3 -m unittest -v test_camera_ros`.
+Jetson hardware and DDS across deployment machines still need validation.
 
 ### Separate belly and stereo modules at the same time
 
@@ -222,6 +338,7 @@ cameras and recording state. For example, `POST :8000/api/video1_start`
 records belly; `POST :8001/api/video1_start` records left independently.
 ROS equivalents are `/camera/belly/capture/video1_start` and
 `/camera/stereo/capture/video1_start`.
+All use `camera_capture_interfaces/srv/Capture` with only `name` in the request.
 
 The dual file fixes camera selection and API mode per service. Both use the
 same `ROS_DOMAIN_ID` and named capture volume, with files separated into

@@ -3,6 +3,9 @@
 *
 !requirements.txt
 !setup/install_requirements.sh
+!setup/ros_entrypoint.sh
+!ros_interfaces/
+!ros_interfaces/**
 !config.py
 !utils_*.py
 !node_*.py

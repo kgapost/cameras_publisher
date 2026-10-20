@@ -1,0 +1,7 @@
+# Recording ID or snapshot filename prefix (1-64 safe filename characters).
+# The service endpoint selects the camera. Use the same name to start/stop.
+# Pass "default" for a default capture. The health service ignores this name.
+string name
+---
+bool success
+string message
